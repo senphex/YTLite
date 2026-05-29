@@ -106,10 +106,27 @@ jobs:
 
       - name: Download and validate IPA
         run: |
-          wget "${{ github.event.inputs.ipa_url }}" --no-verbose -O youtube.ipa
+          ipa_url="${{ github.event.inputs.ipa_url }}"
+          echo "Downloading IPA from: $ipa_url"
+          if ! wget_output=$(wget "$ipa_url" --no-verbose -O youtube.ipa 2>&1); then
+            echo "$wget_output"
+            echo "::error::Failed to download IPA from: $ipa_url"
+            exit 1
+          fi
+          echo "$wget_output"
+
+          file_size=$(stat -f%z youtube.ipa 2>/dev/null || stat -c%s youtube.ipa 2>/dev/null)
+          echo "Downloaded file size: ${file_size:-unknown} bytes"
+          if [[ -n "$file_size" && "$file_size" -lt 1000000 ]]; then
+            echo "::warning::Downloaded file is suspiciously small (${file_size} bytes, expected >= 1000000)."
+          fi
+
           file_type=$(file --mime-type -b youtube.ipa)
+          echo "Detected file type: $file_type"
           if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
-            echo "::error::Validation failed: The downloaded file is not a valid IPA. Detected type: $file_type."
+            echo "::error::Validation failed: Downloaded file from $ipa_url is not a valid IPA. Detected type: $file_type (expected application/x-ios-app or application/zip)."
+            echo "::error::First 500 bytes of downloaded file:"
+            head -c 500 youtube.ipa || true
             exit 1
           fi
 
