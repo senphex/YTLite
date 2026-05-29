@@ -107,6 +107,8 @@ jobs:
       - name: Download and validate IPA
         run: |
           ipa_url="${{ github.event.inputs.ipa_url }}"
+          # 1 MB minimum helps flag HTML/text error pages returned instead of IPA binaries.
+          min_expected_ipa_size=1000000
           echo "Downloading IPA from: $ipa_url"
           if ! wget_output=$(wget "$ipa_url" --no-verbose -O youtube.ipa 2>&1); then
             echo "$wget_output"
@@ -115,10 +117,18 @@ jobs:
           fi
           echo "$wget_output"
 
-          file_size=$(stat -f%z youtube.ipa 2>/dev/null || stat -c%s youtube.ipa 2>/dev/null)
-          echo "Downloaded file size: ${file_size:-unknown} bytes"
-          if [[ -n "$file_size" && "$file_size" -lt 1000000 ]]; then
-            echo "::warning::Downloaded file is suspiciously small (${file_size} bytes, expected >= 1000000)."
+          if [[ "$(uname)" == "Darwin" ]]; then
+            file_size=$(stat -f%z youtube.ipa 2>/dev/null)
+          else
+            file_size=$(stat -c%s youtube.ipa 2>/dev/null)
+          fi
+          if [[ -z "$file_size" ]]; then
+            echo "::error::Unable to determine the downloaded file size for youtube.ipa."
+            exit 1
+          fi
+          echo "Downloaded file size: ${file_size} bytes"
+          if [[ "$file_size" -lt "$min_expected_ipa_size" ]]; then
+            echo "::warning::Downloaded file is suspiciously small (${file_size} bytes, expected >= ${min_expected_ipa_size})."
           fi
 
           file_type=$(file --mime-type -b youtube.ipa)
@@ -126,7 +136,12 @@ jobs:
           if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
             echo "::error::Validation failed: Downloaded file from $ipa_url is not a valid IPA. Detected type: $file_type (expected application/x-ios-app or application/zip)."
             echo "::error::First 500 bytes of downloaded file (hex dump):"
-            hexdump -C -n 500 youtube.ipa || head -c 500 youtube.ipa || true
+            if command -v hexdump >/dev/null 2>&1; then
+              hexdump -C -n 500 youtube.ipa
+            else
+              echo "hexdump not found; showing raw first 500 bytes instead."
+              head -c 500 youtube.ipa || true
+            fi
             exit 1
           fi
 
