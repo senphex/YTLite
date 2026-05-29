@@ -125,8 +125,8 @@ jobs:
           echo "Detected file type: $file_type"
           if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
             echo "::error::Validation failed: Downloaded file from $ipa_url is not a valid IPA. Detected type: $file_type (expected application/x-ios-app or application/zip)."
-            echo "::error::First 500 bytes of downloaded file:"
-            head -c 500 youtube.ipa || true
+            echo "::error::First 500 bytes of downloaded file (hex dump):"
+            hexdump -C -n 500 youtube.ipa || head -c 500 youtube.ipa || true
             exit 1
           fi
 
